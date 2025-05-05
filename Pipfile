@@ -9,6 +9,7 @@ numpy = "*"
 opencv-python = "*"
 matplotlib = "*"
 process-raw = "*"
+pool = "*"
 
 [dev-packages]
 

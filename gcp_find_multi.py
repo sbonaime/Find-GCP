@@ -24,6 +24,10 @@ import matplotlib.pyplot as plt
 import cv2
 from cv2 import aruco
 from process_raw import DngFile
+from multiprocessing import Pool,Lock,Semaphore
+#from multiprocessing.dummy import Pool as ThreadPool
+
+
 
 # handle incompatibility introduced in openCV 4.8
 if packaging.version.parse(cv2.__version__) < packaging.version.parse('4.8'):
@@ -107,6 +111,7 @@ class GcpFind():
         self.lut = np.interp(np.arange(0, 256), self.LUT_IN,
                              self.LUT_OUT).astype(np.uint8)
         self.gcps = []  # list for found gcps
+      #  self.semaphore = Semaphore()
 
     @staticmethod
     def list_dicts():
@@ -156,12 +161,22 @@ class GcpFind():
 
     def process_images(self):
         """ process all images """
-        # process image files from command line
-        for f_name in self.args.names:
-            # read actual image file
-            if self.args.verbose:
-                print(f"processing {f_name}", file=sys.stderr)
-            self.process_image(f_name)
+        results=[]
+        if self.args.cpu == 1:
+            # process image files from command line
+            for f_name in self.args.names:
+                # read actual image file
+                if self.args.verbose:
+                    print(f"processing {f_name}", file=sys.stderr)
+                self.process_image(f_name)
+        else :
+            print(f'Multi cpu processing with: {self.args.cpu} cpus')
+            # with Pool(processes = self.args.cpu) as pool :
+            #     results=pool.map(self.process_image, self.args.names)
+            pool = ThreadPool(self.args.cpu)
+            results = pool.map(self.process_image, self.args.names)
+
+
         if self.args.verbose:
             for j, k in self.gcp_found.items():
                 print(f'GCP{j}: on {len(k)} images {k}', file=sys.stderr)
@@ -213,6 +228,7 @@ class GcpFind():
             plt.imshow(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
         for i in range(ids.size):
             j = ids[i][0]
+            self.semaphore.acquire()
             if j not in self.gcp_found:
                 self.gcp_found[j] = []
             self.gcp_found[j].append(image_name)
@@ -223,6 +239,7 @@ class GcpFind():
                 self.gcps.append((x, y, os.path.basename(image_name), j, corners[i][0]))
             else :
                 self.gcps.append((x, y, os.path.abspath(image_name), j, corners[i][0]))
+            self.semaphore.release()
 
 
             if self.args.debug:
@@ -453,6 +470,8 @@ def cmd_params(parser, params):
                         help=f'use ArUco3 detection, default {params.useAruco3Detection}')
     parser.add_argument('--basename', action="store_true", default=False,
                         help='basename for image files')
+    parser.add_argument('--cpu', type=int,default=1,
+                        help=f'number of cpu for multiprocessing, default 1')
 
 if __name__ == "__main__":
     T1 = time.perf_counter()
